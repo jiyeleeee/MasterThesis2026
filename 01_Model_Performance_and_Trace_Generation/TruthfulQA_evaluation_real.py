@@ -66,7 +66,7 @@ class TruthfulQA_BLEURT_Evaluator:
         """
         if not text:
             return 0
-        # add_special_tokens=False가 Qwen 템플릿에 더 적합할 수 있습니다.
+        # 
         return len(self.tokenizer.encode(text, add_special_tokens=False))
 
     def _run_inference_batch(self, prompts: List[str], batch_size: int = 16) -> Tuple[List[str], List[str], List[int]]:
@@ -237,7 +237,7 @@ class TruthfulQA_BLEURT_Evaluator:
 
         for i, example in enumerate(dataset):
             question = example[QUESTION_COL]
-            example_id = i # 인덱스를 고유 ID로 사용
+            example_id = i # 
             
             messages = [
                 {"role": "system", "content": system_prompt},
@@ -248,12 +248,12 @@ class TruthfulQA_BLEURT_Evaluator:
                 messages,
                 tokenize=False,
                 add_generation_prompt=True,
-                enable_thinking=True # <think> 태그 활성화
+                enable_thinking=True # <think> 
             )
             
             all_prompts_map[example_id] = prompt
 
-            # 메타데이터 저장
+            # 
             correct_answers_list = example[ANSWER_COL]
             incorrect_answers_list = example[INCORRECT_COL]
             best_answer = correct_answers_list[0] if correct_answers_list else None
@@ -267,51 +267,51 @@ class TruthfulQA_BLEURT_Evaluator:
             }
             initial_ids_to_process.append(example_id)
             
-        # Step 2: 루프 변수 초기화
-        final_results_map = {} # Map[id, result_dict] (모든 패스의 원시 결과를 저장)
+        # Step 2
+        final_results_map = {} # Map[id, result_dict] 
         ids_to_process = initial_ids_to_process
         current_pass = 0
         start_time = time.time()
 
-        # Step 3: 재시도 루프 
+        # Step 3 
         while ids_to_process and current_pass < max_passes:
             current_pass += 1
             logger.info(f"--- Starting Pass {current_pass}/{max_passes} for {len(ids_to_process)} samples ---")
 
-            # A) 이번 패스에서 처리할 프롬프트와 메타데이터 준비
+            # A) 
             prompts_for_this_pass = [all_prompts_map[id] for id in ids_to_process]
             metadata_for_this_pass = [all_metadata_map[id] for id in ids_to_process]
 
-            # B) 배치 추론 실행
+            # B) 
             batch_final_contents, batch_thinking_contents, batch_thinking_token_counts = \
                 self._run_inference_batch(prompts_for_this_pass, batch_size)
             
-            ids_failing_this_pass = [] # 이번 패스에서 실패한 ID 목록
+            ids_failing_this_pass = [] # 
 
-            # C) 이번 패스 결과 처리
+            # C) 
             for i, final_content in enumerate(batch_final_contents):
                 metadata = metadata_for_this_pass[i]
                 current_id = metadata['id']
                 thinking_content = batch_thinking_contents[i]
                 
-                # 실패 기준: <think> 태그가 없는 경우
+                # 
                 is_failure = (thinking_content == "--- No <think> tag found ---")
                 
-                # D) 결과 처리 및 저장
+                # D) 
                 if is_failure and current_pass < max_passes:
                     ids_failing_this_pass.append(current_id)
                 else:
-                    # 성공했거나, 또는 실패했지만 마지막 재시도 기회였다면
-                    # 최종 결과로 확정하고 저장.
+                    # 
+                    # 
                     final_results_map[current_id] = {
                         'metadata': metadata,
-                        'predicted_answer': final_content, # BLEURT는 final_content (최종 답변)만 평가
+                        'predicted_answer': final_content, # 
                         'thinking_content': thinking_content,
                         'thinking_tokens': batch_thinking_token_counts[i],
-                        'pass_processed': current_pass # 몇 번째 패스에서 처리됐는지 기록
+                        'pass_processed': current_pass # 
                     }
 
-            # E) 다음 루프를 위해 처리할 ID 목록 업데이트
+            # E) 
             ids_to_process = ids_failing_this_pass
             if ids_to_process:
                 logger.info(f"Pass {current_pass} complete. {len(ids_to_process)} samples failed <think> check and will be retried.")
@@ -323,33 +323,33 @@ class TruthfulQA_BLEURT_Evaluator:
         if ids_to_process:
             logger.warning(f"After {max_passes} passes, {len(ids_to_process)} samples still had <think> tag issues. They are included with their last failed state.")
 
-        # Step 4: BLEURT 평가를 위해 결과 집계
-        # ID 순서대로 정렬하여 원본 데이터셋 순서 유지
+        # Step 4
+        
         sorted_results = [final_results_map[id] for id in initial_ids_to_process if id in final_results_map]
         
         num_samples = len(sorted_results)
         if num_samples != len(dataset):
              logger.error(f"Result count mismatch! Expected {len(dataset)} results, but got {num_samples}.")
 
-        # BLEURT 평가를 위한 리스트 준비
+        # BLEURT 
         predictions = [r['predicted_answer'] for r in sorted_results]
         all_thinking_contents = [r['thinking_content'] for r in sorted_results]
         all_thinking_token_counts = [r['thinking_tokens'] for r in sorted_results]
         correct_answers_list_for_eval = [r['metadata']['correct_answers'] for r in sorted_results]
         incorrect_answers_list_for_eval = [r['metadata']['incorrect_answers'] for r in sorted_results]
 
-        # Step 5: BLEURT 평가 실행 (모든 패스가 끝난 후 한 번만)
+        # Step 5
         bleurt_max_scores, bleurt_diff_scores, bleurt_acc_scores = self._run_BLEURT_evaluation(
             predictions, correct_answers_list_for_eval, incorrect_answers_list_for_eval
         )
         
-        # Step 6: 최종 결과 상세 리포트 생성
+        # Step 6
         detailed_results = []
         for i in range(num_samples):
             result_data = sorted_results[i]
             metadata = result_data['metadata']
             
-            # BLEURT 결과가 NaN일 경우 False로 처리
+            
             is_correct = bool(bleurt_acc_scores[i]) if not np.isnan(bleurt_acc_scores[i]) else False
 
             detailed_results.append({

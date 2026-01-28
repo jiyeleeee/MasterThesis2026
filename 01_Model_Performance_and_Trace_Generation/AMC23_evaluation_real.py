@@ -219,7 +219,7 @@ class AMC23Evaluator:
         if max_samples:
             dataset = dataset.select(range(min(max_samples, len(dataset))))
 
-        #  Step 1: 모든 프롬프트와 메타데이터를 ID 기준으로 미리 준비
+        #  Step 1
         logger.info(f"Preparing initial data for {len(dataset)} samples...")
         all_prompts_map = {}
         all_metadata_map = {}
@@ -263,43 +263,43 @@ class AMC23Evaluator:
             }
             initial_ids_to_process.append(example_id)
         
-        # Step 2: 루프 변수 초기화
-        final_detailed_results = {} # Map[id, result_dict] (성공한 결과만 저장)
+        # Step 2
+        final_detailed_results = {} # Map[id, result_dict] 
         ids_to_process = initial_ids_to_process
         current_pass = 0
         start_time = time.time()
 
-        # Step 3: 재시도 루프 
+        # Step 3
         while ids_to_process and current_pass < max_passes:
             current_pass += 1
             logger.info(f"--- Starting Pass {current_pass}/{max_passes} for {len(ids_to_process)} samples ---")
 
-            # A) 이번 패스에서 처리할 프롬프트와 메타데이터 준비
+            # A) 
             prompts_for_this_pass = [all_prompts_map[id] for id in ids_to_process]
             metadata_for_this_pass = [all_metadata_map[id] for id in ids_to_process]
 
-            # B) 배치 추론 실행 (run_inference_batch 함수 사용)
+            # B) 
             all_thinking_contents, all_final_contents, all_thinking_token_counts = \
                 self._run_inference_batch(prompts_for_this_pass, batch_size)
             
-            ids_failing_this_pass = [] # 이번 패스에서 실패한 ID 목록
+            ids_failing_this_pass = [] # 
 
-            # C) 이번 패스 결과 처리
+            # C) 
             for i, final_content in enumerate(all_final_contents):
                 metadata = metadata_for_this_pass[i]
                 current_id = metadata['id']
                 thinking_content = all_thinking_contents[i]
                 
-                # 실패 기준: <think> 태그가 없는 경우
+                # 
                 is_failure = (thinking_content == "--- No <think> tag found ---")
                 
-                # D) 결과 처리 및 저장
-                # 실패했더라도 마지막 패스(max_passes)가 아니면 재시도
+                # D) 
+                # 
                 if is_failure and current_pass < max_passes:
                     ids_failing_this_pass.append(current_id)
                 else:
-                    # 성공했거나, 또는 실패했지만 마지막 재시도 기회였다면
-                    # 최종 결과로 확정하고 저장.
+                    # 
+                    # 
                     predicted_answer = self._extract_answer_from_text(final_content, thinking_content)
                     correct_answer = metadata['correct_answer']
                     is_correct = self._is_correct(predicted_answer, correct_answer)
@@ -313,11 +313,11 @@ class AMC23Evaluator:
                         'final_content': final_content, 
                         'thinking_tokens': all_thinking_token_counts[i],
                         'is_correct': is_correct,
-                        'pass_processed': current_pass # 몇 번째 패스에서 처리됐는지 기록
+                        'pass_processed': current_pass # 
                     }
                     final_detailed_results[current_id] = result_detail
 
-            # E) 다음 루프를 위해 처리할 ID 목록 업데이트
+            # E) 
             ids_to_process = ids_failing_this_pass
             if ids_to_process:
                 logger.info(f"Pass {current_pass} complete. {len(ids_to_process)} samples failed <think> check and will be retried.")
@@ -326,11 +326,11 @@ class AMC23Evaluator:
 
         end_time = time.time()
         
-        # 최종 결과 집계 
+        # 
         if ids_to_process:
             logger.warning(f"After {max_passes} passes, {len(ids_to_process)} samples still had <think> tag issues. They are included with their last failed state.")
 
-        # ID 순서대로 정렬
+        # 
         detailed_results = list(final_detailed_results.values())
         detailed_results.sort(key=lambda x: x['id']) 
 
@@ -338,7 +338,7 @@ class AMC23Evaluator:
         total_thinking_tokens = sum(r['thinking_tokens'] for r in detailed_results)
         num_samples = len(detailed_results)
         
-        # 원본 데이터셋 크기와 비교 (모든 샘플이 final_detailed_results에 있는지 확인)
+        # 
         if num_samples != len(dataset):
              logger.error(f"Result count mismatch! Expected {len(dataset)} results, but got {num_samples}.")
 

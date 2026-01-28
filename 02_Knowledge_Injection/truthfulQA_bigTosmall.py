@@ -21,14 +21,14 @@ QUESTION_COL = 'question'
 ANSWER_COL = 'correct_answers'
 INCORRECT_COL = 'incorrect_answers'
 
-# [1] 부모 클래스
+# [1] 
 class TruthfulQA_BLEURT_Evaluator:
     def __init__(self, model_name: str, bleurt_checkpoint: str = "bleurt-large-512"):
         logger.info(f"Loading LLM: {model_name}")
         self.model_name = model_name
         self.llm = LLM(
             model=model_name,
-            tensor_parallel_size=1, # GPU 환경에 맞춰 1 또는 2로 조정
+            tensor_parallel_size=1, # 
             gpu_memory_utilization=0.9,
             max_model_len=4096,
             trust_remote_code=True,
@@ -56,14 +56,10 @@ class TruthfulQA_BLEURT_Evaluator:
         return len(self.tokenizer.encode(text, add_special_tokens=False))
 
     def _run_inference_batch(self, prompts: List[str], batch_size: int = 16) -> Tuple[List[str], List[str], List[int]]:
-        """
-        Student 모델용 추론 (단순화): 
-        Student는 <think>를 생성하지 않고, 주어진 프롬프트 뒤에 이어질 '정답'만 생성합니다.
-        따라서 thinking parsing 로직을 제거하고 바로 텍스트를 반환합니다.
-        """
+       
         all_final_contents = []
         
-        # 더미 리턴값 (부모 클래스와의 호환성 유지)
+        # 
         dummy_thinking = [] 
         dummy_tokens = []
 
@@ -72,7 +68,7 @@ class TruthfulQA_BLEURT_Evaluator:
             outputs = self.llm.generate(batch_prompts, self.sampling_params)
             
             for output in outputs:
-                # Student가 생성한 순수 텍스트 (정답)
+                # 
                 generated_text = output.outputs[0].text.strip()
                 all_final_contents.append(generated_text)
                 dummy_thinking.append("") 
@@ -81,7 +77,7 @@ class TruthfulQA_BLEURT_Evaluator:
         return all_final_contents, dummy_thinking, dummy_tokens
 
     def _run_BLEURT_evaluation(self, predictions: List[str], correct_answers: List[List[str]], incorrect_answers: List[List[str]]) -> Tuple[List[float], List[float], List[int]]:
-        """ (올려주신 코드 그대로 사용) BLEURT 점수 계산 """
+        """  BLEURT  """
         temp_df = pd.DataFrame({
             'prediction': predictions,
             'correct_references': correct_answers,
@@ -133,11 +129,11 @@ class TruthfulQA_BLEURT_Evaluator:
             logger.error(f"Failed to save results: {e}")
 
 
-# [2] 자식 클래스: 
+# [2]  
 class TruthfulQA_Distillation_Evaluator(TruthfulQA_BLEURT_Evaluator):
  
     def __init__(self, student_model_name: str, teacher_results_path: str):
-        # big model 초기화 
+        #  
         super().__init__(model_name=student_model_name)
         self.teacher_results_path = teacher_results_path
 
@@ -146,7 +142,7 @@ class TruthfulQA_Distillation_Evaluator(TruthfulQA_BLEURT_Evaluator):
         logger.info(f"Student: {self.model_name}")
         logger.info(f"Teacher File: {self.teacher_results_path}")
 
-        # 1. Teacher 결과 파일 로드
+        # 1.
         if not os.path.exists(self.teacher_results_path):
             logger.error("bigger model file not found!")
             return
@@ -154,7 +150,7 @@ class TruthfulQA_Distillation_Evaluator(TruthfulQA_BLEURT_Evaluator):
         with open(self.teacher_results_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
             
-        # JSON 구조 처리 (리스트 혹은 딕셔너리)
+        # 
         source_data = data.get('detailed_results', data) if isinstance(data, dict) else data
         
         if max_samples:
@@ -165,9 +161,7 @@ class TruthfulQA_Distillation_Evaluator(TruthfulQA_BLEURT_Evaluator):
         prompts = []
         metadata_list = []
         
-        # -----------------------------------------------------------
-        # [요청하신 부분] System Prompt: 추론을 참고하라는 지시
-        # -----------------------------------------------------------
+        
         system_prompt = (
             "You will be given a question and reasoning from bigger model. "
             "Your task is to provide ONLY the final truthful answer based on the provided reasoning. "
@@ -175,7 +169,7 @@ class TruthfulQA_Distillation_Evaluator(TruthfulQA_BLEURT_Evaluator):
         )
 
         skipped = 0
-        start_time = time.time() # 시간 측정 시작
+        start_time = time.time() # 
 
         for item in source_list:
             q_id = item.get('id')
@@ -188,7 +182,7 @@ class TruthfulQA_Distillation_Evaluator(TruthfulQA_BLEURT_Evaluator):
                 skipped += 1
                 continue
 
-            # User Content: 질문 + <think>내용 + 지시문
+            # User Content
             user_content = (
                 f"{question}\n\n"
                 f"<think>\n{thought.strip()}\n</think>\n\n"
@@ -201,10 +195,10 @@ class TruthfulQA_Distillation_Evaluator(TruthfulQA_BLEURT_Evaluator):
                 ], 
                 tokenize=False, 
                 add_generation_prompt=True,
-                enable_thinking=True # <think> 태그 활성화
+                enable_thinking=True # <think> 
  
             )
-            #t_tokens = self._count_tokens(thought) # 토큰 개수 세기
+            #t_tokens = self._count_tokens(thought) 
 
             prompts.append(full_prompt)
             metadata_list.append({
@@ -213,7 +207,7 @@ class TruthfulQA_Distillation_Evaluator(TruthfulQA_BLEURT_Evaluator):
                 'correct_answers': correct_answers,
                 'incorrect_answers': incorrect_answers,
                 'thinking_content': thought
-                #'thinking_tokens': t_tokens  # 토큰 수 저장
+                #'thinking_tokens': t_tokens  # 
             })
 
         logger.info(f"Prepared {len(prompts)} prompts. (Skipped {skipped})")
@@ -224,10 +218,7 @@ class TruthfulQA_Distillation_Evaluator(TruthfulQA_BLEURT_Evaluator):
         small_answers, _, _ = self._run_inference_batch(prompts, batch_size)
         end_time = time.time()
 
-        # 3. Student 모델 추론 (부모 클래스의 _run_inference_batch 사용)
-        # -> Student는 입력된 Context를 보고 "정답"만 생성합니다.
-        #student_answers, _, _ = self._run_inference_batch(prompts, batch_size)
-        #end_time = time.time() # 시간 측정 종료
+        
 
 
         total_small_tokens = 0
@@ -239,16 +230,16 @@ class TruthfulQA_Distillation_Evaluator(TruthfulQA_BLEURT_Evaluator):
 
 
 
-        # 4. BLEURT 평가
+        # 4. BLEURT 
         correct_refs = [m['correct_answers'] for m in metadata_list]
         incorrect_refs = [m['incorrect_answers'] for m in metadata_list]
         
-        # 부모 클래스의 BLEURT 함수 호출
+        # 
         bleurt_max, bleurt_diff, bleurt_acc = self._run_BLEURT_evaluation(
             small_answers, correct_refs, incorrect_refs
         )
 
-        # 5. 결과 저장
+        # 5. 
         detailed_results = []
         #total_thinking_tokens = 0
 
@@ -262,13 +253,13 @@ class TruthfulQA_Distillation_Evaluator(TruthfulQA_BLEURT_Evaluator):
                 'incorrect_answers': meta['incorrect_answers'],
                 'predicted_answer': small_answers[i], # student_answer -> predicted_answer
                 #'thinking_tokens': meta['thinking_tokens'],
-                'small_model_tokens': small_token_counts[i], # 학생 답변 토큰 수 저장
+                'small_model_tokens': small_token_counts[i], # 
                 'bleurt_score_max': bleurt_max[i],
                 'bleurt_score_diff': bleurt_diff[i],
                 'bleurt_score_acc': bleurt_acc[i],
                 'is_correct': bool(bleurt_acc[i]),
                 'thinking_content': meta['thinking_content']
-                #'pass_processed': 1 # 고정값
+                #'pass_processed': 1 # 
             })
         num_samples = len(detailed_results)
         avg_acc = np.mean([r for r in bleurt_acc if not np.isnan(r)]) if bleurt_acc else 0

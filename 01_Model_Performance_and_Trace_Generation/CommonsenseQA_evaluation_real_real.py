@@ -34,7 +34,6 @@ class CommonsenseQAEvaluator:
         self.hf_tokenizer.pad_token_id = 151643
 
         #self.hf_tokenizer = AutoTokenizer.from_pretrained(model_name)
-        # Qwen 모델에 따라 pad_token_id 설정 (필요시 수정)
         #if self.hf_tokenizer.pad_token_id is None:
         #    self.hf_tokenizer.pad_token_id = self.hf_tokenizer.eos_token_id
 
@@ -52,9 +51,9 @@ class CommonsenseQAEvaluator:
             return 0
         return len(self.hf_tokenizer.encode(text, add_special_tokens=False))
 
-    # _run_inference_batch는 수정하지 않고 그대로 둡니다.
-    # (단, TruthfulQA 코드처럼 (final, thinking, tokens) 순서로 리턴한다고 가정합니다.
-    #  만약 순서가 다르다면 아래 evaluate에서 받아오는 변수 순서만 맞춰주세요.)
+    # 
+    # 
+    #  
     def _run_inference_batch(self, prompts: List[str], batch_size: int = 16) -> Tuple[List[str], List[str], List[int]]:
         all_thinking_contents = []
         all_final_contents = []
@@ -86,7 +85,7 @@ class CommonsenseQAEvaluator:
                 all_thinking_token_counts.append(self._count_tokens(thinking_part))
                 
         logger.info("Inference complete.")
-        # TruthfulQA 코드와 호환되도록 (final, thinking, tokens) 순서로 리턴
+        # 
         return all_final_contents, all_thinking_contents, all_thinking_token_counts
 
     def _extract_answer_from_text(self, final_content: str) -> str:
@@ -101,14 +100,14 @@ class CommonsenseQAEvaluator:
         if latex_matches:
             return latex_matches[-1].strip().upper()
 
-        # 1. [Strong Pattern] "Answer is E", "Final Answer: A" 등
+        # 1. [Strong Pattern] 
         strong_pattern = r"(?:Final\s*Answer|Answer|Best\s*Answer|Correct\s*Answer)(?:\s*is)?[:.\s]*([A-E])"
         all_matches = re.findall(strong_pattern, cleaned_text, re.IGNORECASE)
 
         if all_matches:
             return all_matches[-1].strip().upper()
 
-        # 2. [Weak Pattern] 괄호 (A) 또는 독립된 문자 A
+        # 2. [Weak Pattern] 
         weak_matches = re.findall(r"\(?([A-E])\)?", cleaned_text)
         
         if weak_matches:
@@ -152,14 +151,14 @@ class CommonsenseQAEvaluator:
         all_metadata_map = {}
         initial_ids_to_process = []
 
-        # System Prompt 설정 
+        # System Prompt  
         system_content = (
             "Please do your step-by-step reasoning and conclude the best answer following the format like 'Final answer: A' with a single letter (A, B, C, D, or E) "
 
         )
 
         for i, example in enumerate(dataset):
-            # 데이터셋 ID가 없으면 인덱스를 ID로 사용
+            # 
             example_id = example.get('id', str(i))
             
             question = example['question']
@@ -203,32 +202,32 @@ class CommonsenseQAEvaluator:
             current_pass += 1
             logger.info(f"--- Starting Pass {current_pass}/{max_passes} for {len(ids_to_process)} samples ---")
 
-            # A) 이번 패스용 프롬프트 준비
+            # A) 
             prompts_for_this_pass = [all_prompts_map[eid] for eid in ids_to_process]
             metadata_for_this_pass = [all_metadata_map[eid] for eid in ids_to_process]
 
-            # B) 배치 추론 실행
-            # (주의: _run_inference_batch의 리턴 순서가 final, thinking, tokens 인지 확인 필요)
+            # B) 
+            # 
             batch_final_contents, batch_thinking_contents, batch_thinking_token_counts = \
                 self._run_inference_batch(prompts_for_this_pass, batch_size)
 
             ids_failing_this_pass = []
 
-            # C) 결과 처리
+            # C) 
             for i, final_content in enumerate(batch_final_contents):
                 metadata = metadata_for_this_pass[i]
                 current_id = metadata['id']
                 thinking_content = batch_thinking_contents[i]
 
-                # 실패 기준: <think> 태그 누락
+                # 
                 is_failure = (thinking_content == "--- No <think> tag found ---")
 
                 if is_failure and current_pass < max_passes:
-                    # 실패했고, 재시도 기회가 남았으면 다음 라운드로 넘김
+                    # 
                     ids_failing_this_pass.append(current_id)
                 else:
-                    # 성공했거나 마지막 기회인 경우 -> 결과 확정
-                    # 정답 추출 및 채점
+                    # 
+                    # 
                     predicted_answer = self._extract_answer_from_text(final_content)
                     is_correct = (predicted_answer == metadata['correct_answer_key'])
 
@@ -242,7 +241,7 @@ class CommonsenseQAEvaluator:
                         'pass_processed': current_pass
                     }
 
-            # D) 다음 루프 준비
+            # D) 
             ids_to_process = ids_failing_this_pass
             if ids_to_process:
                 logger.info(f"Pass {current_pass} complete. {len(ids_to_process)} samples failed <think> check and will be retried.")
@@ -255,7 +254,7 @@ class CommonsenseQAEvaluator:
             logger.warning(f"After {max_passes} passes, {len(ids_to_process)} samples still failed. Using last result.")
 
         # --- Step 4: Finalize & Sort Results ---
-        # 원본 데이터셋 순서대로 정렬
+        # 
         sorted_results = [final_results_map[eid] for eid in initial_ids_to_process if eid in final_results_map]
         
         total_correct = sum(1 for r in sorted_results if r['is_correct'])
@@ -264,7 +263,7 @@ class CommonsenseQAEvaluator:
         avg_thinking_tokens = sum(r['thinking_tokens'] for r in sorted_results) / num_samples if num_samples > 0 else 0
         total_time = end_time - start_time
 
-        # 상세 리포트 생성
+        # 
         detailed_results = []
         for res in sorted_results:
             meta = res['metadata']

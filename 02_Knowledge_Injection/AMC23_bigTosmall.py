@@ -9,21 +9,17 @@ from datasets import load_dataset
 from datetime import datetime
 from transformers import AutoTokenizer
 import logging
-import torch  # torch import 추가 (vLLM 자원 정리를 위해)
+import torch  # 
 from vllm import LLM, SamplingParams
 from vllm.distributed.parallel_state import destroy_model_parallel
 
 
 
-# Configure logging to show progress
+# 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 class AMC23Evaluator:
-    """
-    원본 평가 클래스: 
-    모델이 스스로 <think> 태그를 포함한 추론을 생성하도록 평가합니다.
-    """
     
     def __init__(self, model_name: str = "Qwen/Qwen3-32B"):
         """Initializes the evaluator with a specified vLLM model."""
@@ -214,7 +210,7 @@ class AMC23Evaluator:
         if max_samples:
             dataset = dataset.select(range(min(max_samples, len(dataset))))
 
-        #  Step 1: 모든 프롬프트와 메타데이터를 ID 기준으로 미리 준비
+        #  
         logger.info(f"Preparing initial data for {len(dataset)} samples...")
         all_prompts_map = {}
         all_metadata_map = {}
@@ -254,43 +250,43 @@ class AMC23Evaluator:
             }
             initial_ids_to_process.append(example_id)
         
-        # Step 2: 루프 변수 초기화
-        final_detailed_results = {} # Map[id, result_dict] (성공한 결과만 저장)
+        # 
+        final_detailed_results = {} # Map[id, result_dict] 
         ids_to_process = initial_ids_to_process
         current_pass = 0
         start_time = time.time()
 
-        # Step 3: 재시도 루프 
+        #  
         while ids_to_process and current_pass < max_passes:
             current_pass += 1
             logger.info(f"--- Starting Pass {current_pass}/{max_passes} for {len(ids_to_process)} samples ---")
 
-            # A) 이번 패스에서 처리할 프롬프트와 메타데이터 준비
+            # A) 
             prompts_for_this_pass = [all_prompts_map[id] for id in ids_to_process]
             metadata_for_this_pass = [all_metadata_map[id] for id in ids_to_process]
 
-            # B) 배치 추론 실행 (run_inference_batch 함수 사용)
+            # B) 
             all_thinking_contents, all_final_contents, all_thinking_token_counts = \
                 self._run_inference_batch(prompts_for_this_pass, batch_size)
             
-            ids_failing_this_pass = [] # 이번 패스에서 실패한 ID 목록
+            ids_failing_this_pass = [] # 
 
-            # C) 이번 패스 결과 처리
+            # C) 
             for i, final_content in enumerate(all_final_contents):
                 metadata = metadata_for_this_pass[i]
                 current_id = metadata['id']
                 thinking_content = all_thinking_contents[i]
                 
-                # 실패 기준: <think> 태그가 없는 경우
+                # 
                 is_failure = (thinking_content == "--- No <think> tag found ---")
                 
-                # D) 결과 처리 및 저장
-                # 실패했더라도 마지막 패스(max_passes)가 아니면 재시도
+                # D)
+                # 
                 if is_failure and current_pass < max_passes:
                     ids_failing_this_pass.append(current_id)
                 else:
-                    # 성공했거나, 또는 실패했지만 마지막 재시도 기회였다면
-                    # 최종 결과로 확정하고 저장.
+                    # 
+                    # 
                     predicted_answer = self._extract_answer_from_text(final_content, thinking_content)
                     correct_answer = metadata['correct_answer']
                     is_correct = self._is_correct(predicted_answer, correct_answer)
@@ -304,11 +300,11 @@ class AMC23Evaluator:
                         'final_content': final_content, 
                         'thinking_tokens': all_thinking_token_counts[i],
                         'is_correct': is_correct,
-                        'pass_processed': current_pass # 몇 번째 패스에서 처리됐는지 기록
+                        'pass_processed': current_pass # 
                     }
                     final_detailed_results[current_id] = result_detail
 
-            # E) 다음 루프를 위해 처리할 ID 목록 업데이트
+            # E) 
             ids_to_process = ids_failing_this_pass
             if ids_to_process:
                 logger.info(f"Pass {current_pass} complete. {len(ids_to_process)} samples failed <think> check and will be retried.")
@@ -317,11 +313,11 @@ class AMC23Evaluator:
 
         end_time = time.time()
         
-        # 최종 결과 집계 
+        #  
         if ids_to_process:
             logger.warning(f"After {max_passes} passes, {len(ids_to_process)} samples still had <think> tag issues. They are included with their last failed state.")
 
-        # ID 순서대로 정렬
+        # 
         detailed_results = list(final_detailed_results.values())
         detailed_results.sort(key=lambda x: x['id']) 
 
@@ -329,7 +325,7 @@ class AMC23Evaluator:
         total_thinking_tokens = sum(r['thinking_tokens'] for r in detailed_results)
         num_samples = len(detailed_results)
         
-        # 원본 데이터셋 크기와 비교 (모든 샘플이 final_detailed_results에 있는지 확인)
+        # 
         if num_samples != len(dataset):
              logger.error(f"Result count mismatch! Expected {len(dataset)} results, but got {num_samples}.")
 
@@ -360,9 +356,6 @@ class AMC23Evaluator:
 
 # ---------------------------------------------------------------------------
 # --- Big to small and small to big ---
-#   - load input (Question, Thinking)과 answer(Correct Answer) from Big Model JSON 
-#   - Small Model에게는 Question과 <think>로 감싼 Thinking만.
-
 # ---------------------------------------------------------------------------
 
 class BigToSmallEvaluator(AMC23Evaluator):
@@ -384,16 +377,16 @@ class BigToSmallEvaluator(AMC23Evaluator):
             
             loaded_samples = []
             for item in data.get("detailed_results", []):
-                # 생각이 유효한 샘플만 사용
+                # 
                 if item.get('thinking_content') :
                     loaded_samples.append({
                         'id': item['id'],
                         'question': item['question'],
-                        'thinking_content': item['thinking_content'], # 태그 없는 순수 텍스트
-                        'correct_answer': item['correct_answer']      # 채점용 정답
+                        'thinking_content': item['thinking_content'], # 
+                        'correct_answer': item['correct_answer']      # 
                     })
             
-            # ID 순으로 정렬
+            # 
             loaded_samples.sort(key=lambda x: x['id'])
             
             logger.info(f"Successfully loaded {len(loaded_samples)} samples from JSON.")
@@ -417,7 +410,7 @@ class BigToSmallEvaluator(AMC23Evaluator):
     def evaluate(self, max_samples: int = None, batch_size: int = 16, exclude_ids: List[int] = None):
         logger.info(f"Starting Distillation Evaluation: {self.model_name}")
 
-        # 1. 평가 대상 필터링
+        # 1. 
         target_samples = self.eval_data
         
         if exclude_ids:
@@ -428,7 +421,7 @@ class BigToSmallEvaluator(AMC23Evaluator):
 
         logger.info(f"Processing {len(target_samples)} samples...")
 
-        # 2. 프롬프트 구성
+        # 2. 
         prompts = []
         system_prompt = (
             "You will be given a math problem and a step-by-step reasoning process with guide "
@@ -463,7 +456,7 @@ class BigToSmallEvaluator(AMC23Evaluator):
             prompts.append(full_prompt)
 
 
-        # 3. Small Model 추론 (Batch)
+        # 3. Small Model 
 
         all_outputs = []
         total_batches = (len(prompts) + batch_size - 1) // batch_size
@@ -475,7 +468,7 @@ class BigToSmallEvaluator(AMC23Evaluator):
             batch_prompts = prompts[i : i + batch_size]
             logger.info(f"Processing batch {i // batch_size + 1}/{total_batches}...")
             
-            # 배치 단위로 vLLM에 요청
+            # 
             batch_outputs = self.llm.generate(batch_prompts, self.sampling_params)
             all_outputs.extend(batch_outputs)
 
@@ -483,7 +476,7 @@ class BigToSmallEvaluator(AMC23Evaluator):
         logger.info("Inference complete.")
 
 
-        # 4. 채점 및 결과 정리
+        # 4. 
         detailed_results = []
         correct_count = 0
         
@@ -491,7 +484,7 @@ class BigToSmallEvaluator(AMC23Evaluator):
             generated_text = output.outputs[0].text.strip()
             sample = target_samples[i]
             
-            # 답안 추출
+            # 
             pred = self._extract_answer_from_text(generated_text, "")
             is_correct = self._is_correct(pred, sample['correct_answer'])
             
@@ -520,11 +513,11 @@ class BigToSmallEvaluator(AMC23Evaluator):
             })
 
 
-        # 5. 저장
+        # 5. 
         num_samples = len(detailed_results)
         accuracy = correct_count / len(detailed_results) if detailed_results else 0
         
-        # 평균 토큰 수 계산
+        # 
 
         total_small_tokens = sum(r['small_model_tokens'] for r in detailed_results)
         avg_small_tokens = total_small_tokens / num_samples if num_samples > 0 else 0
@@ -561,7 +554,7 @@ class BigToSmallEvaluator(AMC23Evaluator):
 
 
 if __name__ == "__main__":
-    # 설정
+    # 
     #32B
     #BIG_MODEL_FILE ="AMC23_remove answers from result/amc23_results_think_Qwen_Qwen3-32B_20251214_180434.json"
 
@@ -573,7 +566,7 @@ if __name__ == "__main__":
     #Small_model_file = ""
     
     
-    # 2. 평가할 Small 모델
+    # 2. 
     target_model = "Qwen/Qwen3-8B" 
     logger.info(f"=== Starting Evaluation for: {target_model} ===")
     
